@@ -1,0 +1,105 @@
+#!/bin/bash
+
+declare -gA b_config=(
+  ['cwd']=2
+)
+
+# Show the current working directory
+#
+#   0     => Show the absolute path with $HOME abbreviated with a tilde
+#   1     => Show the basename of the current working directory, with $HOME
+#            abbreviated with a tilde
+#   2..n  => If number is 2 or greater, show only that amount of directory and
+#            truncate the beginning of the path
+bashd::prompt::cwd() {
+  if [[ "${b_config['cwd']}" == 0 ]]; then
+    PS1="$PS1 \w"
+  elif [[ "${b_config['cwd']}" == 1 ]]; then
+    PS1="$PS1 \W"
+  elif [[ "${b_config['cwd']}" > 1 ]]; then
+   PS1="$PS1 \w"
+    PROMPT_DIRTRIM="${b_config['cwd']}"
+  fi
+
+}
+
+bashd::prompt::compact_cwd() {
+  path="${PWD}"
+
+  # Split the path
+  IFS=$'\n' read -d "" -ra folders <<< "${path//\//$'\n'}"
+
+  # Replace `/home/username` with `~`
+  if [[ "${folders[0]}" == "home" ]]; then
+    folders=( "${folders[@]:2}" )
+    folders=( "~" "${folders[@]}" )
+  fi
+
+  # Generate the new path
+  last_item="$(( ${#folders[@]} - 1 ))"
+  new_path=""
+  for i in "${!folders[@]}"; do
+    # If it's the last item, expand the folder name
+    if [[ "$i" == "${last_item}" && "${folders[$i]}" != "~" ]]; then
+      new_path+="/${folders[$i]}"
+    # If it starts with the homedir, don't add a slash
+    elif [[ "${folders[$i]}" == "~" ]]; then
+      new_path+="${folders[$i]}"
+    # If the folder name start with a period, show the second character
+    elif [[ "${folders[$i]:0:1}" == "." ]]; then
+      new_path+="/${folders[$i]:0:2}"
+    else
+      new_path+="/${folders[$i]:0:1}"
+    fi
+  done
+
+  PS1="$PS1 $new_path"
+}
+# Show git information
+bashd::prompt::vcs() {
+  local git_branch="$(git rev-parse --abbrev-ref HEAD 2> /dev/null)"
+  local git_status="$(git status --porcelain 2> /dev/null)"
+  local hg_branch="$(hg branch 2> /dev/null)"
+
+
+  if [[ -n "$git_branch" ]] && [[ -n "$git_status" ]]; then
+    PS1="$PS1 git:$git_branch*"
+  elif [[ -n "$git_branch" ]]; then
+    PS1="$PS1 git:$git_branch"
+  fi
+
+  if [[ -n "$hg_branch" ]]; then
+    PS1="$PS1 hg:$hg_branch"
+  fi
+}
+
+# Show if python venv is actived
+bashd::prompt::venv() {
+  if [[ -n "$VIRTUAL_ENV" ]]; then
+    PS1="$PS1 (venv)"
+  fi
+}
+
+bashd::plugin::lastdir() {
+  # Todo:
+  #
+  # if $OLDPWD is different than $PWD then we save the new PWD in a file. When
+  # the user open a new terminal we check if lastdir is enabled and if it is we
+  # `cd` to the path saved in the lastdir file. I need to use a FIFO file to
+  # avoid disk i/o.
+  #
+  # Where should that file be located? e.g. /cache, /tmp, ~/.bash_lastdir
+  echo "Open in last known directory"
+}
+
+bashd::main() {
+  PS1=""
+  #bashd::prompt::cwd
+  bashd::prompt::compact_cwd
+  bashd::prompt::vcs
+  bashd::prompt::venv
+  PS1="$PS1 \$ "
+}
+
+bashd::main "$@"
+PROMPT_COMMAND="bashd::main; $PROMPT_COMMAND"
